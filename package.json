@@ -8,7 +8,10 @@
     "build": "tsc",
     "test": "vitest",
     "test:engine": "vitest run tests/engine",
-    "migrate": "drizzle-kit push"
+    "migrate": "drizzle-kit push",
+    "backup:csv": "node scripts/export-csv-backup.mjs",
+    "backup:csv:prune": "node scripts/export-csv-backup.mjs --keep=30",
+    "restore:csv": "node scripts/import-csv-backup.mjs"
   },
   "keywords": ["expense", "splitting", "telegram", "bot"],
   "author": "",

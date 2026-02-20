@@ -1,0 +1,14 @@
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImagePolicy
+metadata:
+  name: splitbot
+  namespace: flux-system
+spec:
+  imageRepositoryRef:
+    name: splitbot
+  filterTags:
+    pattern: "^main-(?P<run>[0-9]+)-sha-[a-f0-9]{40}$"
+    extract: "$run"
+  policy:
+    numerical:
+      order: asc

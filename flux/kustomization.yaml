@@ -1,0 +1,8 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - splitbot-gitrepository.yaml
+  - splitbot-kustomization.yaml
+  - splitbot-imagerepository.yaml
+  - splitbot-imagepolicy.yaml
+  - splitbot-imageupdateautomation.yaml

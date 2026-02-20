@@ -20,6 +20,7 @@ logs/
 *.db
 *.sqlite
 *.sqlite3
+data/backups/
 
 # Test data
 # Keep anonymized CSV fixtures in git for regression tests.
@@ -36,3 +37,7 @@ Thumbs.db
 
 # Test coverage
 coverage/
+
+# Local Kubernetes secrets
+k8s/overlays/local/secret.yaml
+flux/git-auth-secret.yaml

@@ -1,0 +1,30 @@
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImageUpdateAutomation
+metadata:
+  name: splitbot
+  namespace: flux-system
+spec:
+  interval: 1m
+  sourceRef:
+    kind: GitRepository
+    name: splitbot
+  git:
+    checkout:
+      ref:
+        branch: main
+    commit:
+      author:
+        email: fluxcdbot@users.noreply.github.com
+        name: fluxcdbot
+      messageTemplate: |
+        chore: update splitbot image
+
+        Updated files:
+        {{- range $filename, $_ := .Updated.Files }}
+        - {{ $filename }}
+        {{- end }}
+    push:
+      branch: main
+  update:
+    path: ./k8s/overlays/local
+    strategy: Setters

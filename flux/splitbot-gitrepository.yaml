@@ -1,0 +1,13 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: splitbot
+  namespace: flux-system
+spec:
+  interval: 1m
+  ref:
+    branch: main
+  url: https://github.com/erix/splitbot
+  # For ImageUpdateAutomation push support, add:
+  # secretRef:
+  #   name: splitbot-flux-git-auth
