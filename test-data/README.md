@@ -1,1 +1,1 @@
-# Splitwise exports live here — never committed
+# Anonymized Splitwise fixtures for engine validation tests
