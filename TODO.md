@@ -61,6 +61,49 @@ Upsert via UserRepo: Telegram id (as string), first_name, username.
 - Edge cases: "❌ No active group. Use /newgroup or /join first."
 - Keep bot thin — call services, format output
 
+## Splitwise Export Validation (Golden Dataset)
+
+Real Splitwise exports live in `test-data/` — **never committed to git**.
+
+Drop CSV exports from Splitwise there:
+- Export via Splitwise → Settings → Export Data → CSV
+
+### What to build: `tests/engine/splitwise-validation.test.ts`
+
+1. **Parse the CSV** — Splitwise export format:
+   ```
+   Date,Description,Currency,Cost,Category,<Member1>,<Member2>,...
+   ```
+   Each member column shows their share (positive = owed to payer, negative = owes).
+
+2. **Run our engine** against the same data:
+   - Parse each row into an `Expense` object
+   - Run `calculateBalances()` + `simplifyDebts()`
+
+3. **Compare output** to Splitwise's final balances (last rows of the CSV show totals):
+   - If our numbers match Splitwise's → engine is correct ✅
+   - Any mismatch → find and fix the edge case
+
+4. **Pay attention to:**
+   - Rounding differences (Splitwise rounds differently in some cases)
+   - Unequal splits / percentage splits in the export
+   - Currencies (if mixed)
+   - Deleted expenses (marked in export)
+
+### Key insight
+This gives us a real-world golden dataset. If our engine matches Splitwise on Erik's
+actual data, we can trust it for production use.
+
+The test file should skip gracefully if no CSV is present:
+```typescript
+const csvPath = path.join(__dirname, '../../test-data/splitwise-export.csv')
+if (!fs.existsSync(csvPath)) {
+  test.skip('No Splitwise export found in test-data/')
+}
+```
+
+---
+
 ## Run tests after changes
 ```bash
 npm test -- --run

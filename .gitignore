@@ -21,6 +21,11 @@ logs/
 *.sqlite
 *.sqlite3
 
+# Test data — Splitwise exports, personal data, never commit
+test-data/*.csv
+test-data/*.json
+test-data/*.xlsx
+
 # OS
 .DS_Store
 Thumbs.db
