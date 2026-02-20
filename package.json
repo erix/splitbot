@@ -1,0 +1,32 @@
+{
+  "name": "splitbot",
+  "version": "1.0.0",
+  "description": "Splitwise-like expense splitting engine with Telegram bot frontend",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/bot/index.ts",
+    "build": "tsc",
+    "test": "vitest",
+    "test:engine": "vitest run tests/engine",
+    "migrate": "drizzle-kit push"
+  },
+  "keywords": ["expense", "splitting", "telegram", "bot"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "dotenv": "^16.4.7",
+    "drizzle-orm": "^0.37.0",
+    "express": "^4.21.2",
+    "grammy": "^1.32.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.5",
+    "drizzle-kit": "^0.29.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  }
+}
