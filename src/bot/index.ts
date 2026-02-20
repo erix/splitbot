@@ -36,16 +36,43 @@ const balanceService = new BalanceService(expenseRepo, settlementRepo);
 const NO_ACTIVE_GROUP_MESSAGE =
   "❌ No active group. In private chat use /newgroup or /join first.";
 
-const MAIN_KEYBOARD = new Keyboard()
-  .text("💸 Add Expense")
-  .text("💰 Balances")
-  .row()
-  .text("✅ Settle Up")
-  .text("📋 History")
-  .row()
-  .text("⚙️ Groups")
-  .resized()
-  .persistent();
+function buildMainKeyboard(params: {
+  includeGroupsButton: boolean;
+  useCommandButtons: boolean;
+}): Keyboard {
+  const keyboard = new Keyboard();
+
+  if (params.useCommandButtons) {
+    keyboard
+      .text("/addexpense 💸")
+      .text("/balances 💰")
+      .row()
+      .text("/settle ✅")
+      .text("/history 📋");
+  } else {
+    keyboard
+      .text("💸 Add Expense")
+      .text("💰 Balances")
+      .row()
+      .text("✅ Settle Up")
+      .text("📋 History");
+  }
+
+  if (params.includeGroupsButton) {
+    keyboard.row().text("⚙️ Groups");
+  }
+
+  return keyboard.resized().persistent();
+}
+
+const PRIVATE_MAIN_KEYBOARD = buildMainKeyboard({
+  includeGroupsButton: true,
+  useCommandButtons: false,
+});
+const GROUP_MAIN_KEYBOARD = buildMainKeyboard({
+  includeGroupsButton: false,
+  useCommandButtons: true,
+});
 
 let cachedBotUsername: string | null = null;
 
@@ -55,6 +82,44 @@ function getChatId(ctx: Context): number | null {
 
 function isTelegramGroupChat(ctx: Context): boolean {
   return ctx.chat?.type === "group" || ctx.chat?.type === "supergroup";
+}
+
+function getMainKeyboard(ctx: Context): Keyboard {
+  return isTelegramGroupChat(ctx) ? GROUP_MAIN_KEYBOARD : PRIVATE_MAIN_KEYBOARD;
+}
+
+async function promptForConversationInput(
+  ctx: Context,
+  text: string,
+  placeholder?: string
+): Promise<void> {
+  if (isTelegramGroupChat(ctx)) {
+    const message = ctx.message;
+    const forceReplyMarkup: {
+      force_reply: true;
+      input_field_placeholder?: string;
+    } = {
+      force_reply: true,
+    };
+    if (placeholder) {
+      forceReplyMarkup.input_field_placeholder = placeholder;
+    }
+
+    if (message && "message_id" in message) {
+      await ctx.reply(`${text}\n(Reply to this message.)`, {
+        reply_to_message_id: message.message_id,
+        reply_markup: forceReplyMarkup,
+      });
+      return;
+    }
+
+    await ctx.reply(`${text}\n(Reply to this message.)`, {
+      reply_markup: forceReplyMarkup,
+    });
+    return;
+  }
+
+  await replyWithKeyboard(ctx, text);
 }
 
 function getTelegramChatGroupId(chatId: number): string {
@@ -99,6 +164,10 @@ function parseAmountToCents(input: string): number | null {
   return Math.round(value * 100);
 }
 
+function normalizeUsername(value: string): string {
+  return value.replace(/^@/, "").toLowerCase();
+}
+
 function makeExpenseId(): string {
   return `exp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -132,7 +201,7 @@ async function getBotUsername(): Promise<string | null> {
 }
 
 async function replyWithKeyboard(ctx: Context, text: string): Promise<void> {
-  await ctx.reply(text, { reply_markup: MAIN_KEYBOARD });
+  await ctx.reply(text, { reply_markup: getMainKeyboard(ctx) });
 }
 
 async function upsertTelegramUserFromData(user: {
@@ -170,7 +239,9 @@ async function upsertTelegramUser(
   return upsertTelegramUserFromData(ctx.from);
 }
 
-async function getGroupMembers(groupId: string): Promise<GroupMemberOption[]> {
+async function getGroupMemberUsers(
+  groupId: string
+): Promise<Array<GroupMemberOption & { username?: string }>> {
   const group = await groupService.getGroup(groupId);
   if (!group) {
     return [];
@@ -182,9 +253,62 @@ async function getGroupMembers(groupId: string): Promise<GroupMemberOption[]> {
       return {
         id: memberId,
         name: user?.name || "Unknown",
+        username: user?.username,
       };
     })
   );
+}
+
+async function getGroupMembers(groupId: string): Promise<GroupMemberOption[]> {
+  const members = await getGroupMemberUsers(groupId);
+  return members.map(({ id, name }) => ({ id, name }));
+}
+
+function resolveTaggedGroupMemberIds(
+  ctx: Context,
+  groupMembers: Array<GroupMemberOption & { username?: string }>
+): { tagCount: number; resolvedIds: Set<string> } {
+  const message = ctx.message;
+  if (!message || !("text" in message) || !message.text || !message.entities) {
+    return {
+      tagCount: 0,
+      resolvedIds: new Set<string>(),
+    };
+  }
+
+  const memberIds = new Set(groupMembers.map((member) => member.id));
+  const memberIdByUsername = new Map<string, string>();
+  for (const member of groupMembers) {
+    if (!member.username) {
+      continue;
+    }
+
+    memberIdByUsername.set(normalizeUsername(member.username), member.id);
+  }
+
+  let tagCount = 0;
+  const resolvedIds = new Set<string>();
+  for (const entity of message.entities) {
+    if (entity.type === "mention") {
+      tagCount += 1;
+      const mentionText = message.text.slice(entity.offset, entity.offset + entity.length);
+      const taggedUserId = memberIdByUsername.get(normalizeUsername(mentionText));
+      if (taggedUserId) {
+        resolvedIds.add(taggedUserId);
+      }
+      continue;
+    }
+
+    if (entity.type === "text_mention") {
+      tagCount += 1;
+      const taggedUserId = entity.user.id.toString();
+      if (memberIds.has(taggedUserId)) {
+        resolvedIds.add(taggedUserId);
+      }
+    }
+  }
+
+  return { tagCount, resolvedIds };
 }
 
 async function seedGroupMembersFromChatAdmins(
@@ -384,7 +508,7 @@ async function startExpenseConversation(ctx: Context): Promise<void> {
     step: "awaiting_amount",
     ownerUserId: ctx.from.id.toString(),
   });
-  await replyWithKeyboard(ctx, "How much?");
+  await promptForConversationInput(ctx, "How much?", "e.g. 12.50");
 }
 
 async function showBalances(ctx: Context): Promise<void> {
@@ -476,6 +600,8 @@ async function showHistory(ctx: Context): Promise<void> {
     return;
   }
 
+  const requesterId = ctx.from?.id.toString();
+
   const expenses = await expenseService.getGroupExpenses(activeGroup.groupId);
   if (expenses.length === 0) {
     await replyWithKeyboard(ctx, `📋 ${activeGroup.groupName}\n\nNo expenses yet.`);
@@ -491,21 +617,37 @@ async function showHistory(ctx: Context): Promise<void> {
   for (const expense of lastTen) {
     const payer = await userRepo.findById(expense.paidBy);
     const date = expense.createdAt.toLocaleDateString();
+    const canDelete = requesterId !== undefined && requesterId === expense.createdBy;
+
+    if (canDelete) {
+      await ctx.reply(
+        `${formatEuro(expense.amount)} • ${expense.description}\nPaid by ${payer?.name || "Unknown"} on ${date}`,
+        {
+          reply_markup: new InlineKeyboard().text(
+            "🗑 Delete",
+            `history:delete:${activeGroup.groupId}:${expense.id}`
+          ),
+        }
+      );
+      continue;
+    }
 
     await ctx.reply(
-      `${formatEuro(expense.amount)} • ${expense.description}\nPaid by ${payer?.name || "Unknown"} on ${date}`,
-      {
-        reply_markup: new InlineKeyboard().text(
-          "🗑 Delete",
-          `history:delete:${activeGroup.groupId}:${expense.id}`
-        ),
-      }
+      `${formatEuro(expense.amount)} • ${expense.description}\nPaid by ${payer?.name || "Unknown"} on ${date}`
     );
   }
 }
 
 async function showGroups(ctx: Context): Promise<void> {
   clearConversation(ctx);
+
+  if (isTelegramGroupChat(ctx)) {
+    await replyWithKeyboard(
+      ctx,
+      "⚙️ /groups is only available in private chat. This Telegram group chat is already one group."
+    );
+    return;
+  }
 
   const user = await upsertTelegramUser(ctx);
   if (!user) {
@@ -560,6 +702,30 @@ async function showGroups(ctx: Context): Promise<void> {
 }
 
 bot.use(async (ctx, next) => {
+  const chatId = ctx.chat?.id ?? "n/a";
+  const chatType = ctx.chat?.type ?? "n/a";
+  const fromId = ctx.from?.id ?? "n/a";
+  const updateId = ctx.update.update_id;
+  const updateKind =
+    Object.keys(ctx.update).find((key) => key !== "update_id") || "unknown";
+  const callbackData = ctx.callbackQuery?.data;
+  const messageText =
+    ctx.message && "text" in ctx.message ? ctx.message.text : undefined;
+
+  if (callbackData) {
+    console.log(
+      `[update] id=${updateId} kind=${updateKind} chat=${chatId} type=${chatType} from=${fromId} callback=${callbackData}`
+    );
+  } else if (messageText) {
+    console.log(
+      `[update] id=${updateId} kind=${updateKind} chat=${chatId} type=${chatType} from=${fromId} message=${messageText}`
+    );
+  } else {
+    console.log(
+      `[update] id=${updateId} kind=${updateKind} chat=${chatId} type=${chatType} from=${fromId}`
+    );
+  }
+
   if (isTelegramGroupChat(ctx)) {
     await ensureTelegramChatGroup(ctx);
   }
@@ -646,9 +812,18 @@ bot.command("start", async (ctx) => {
 
 bot.command("help", async (ctx) => {
   clearConversation(ctx);
+
+  if (isTelegramGroupChat(ctx)) {
+    await replyWithKeyboard(
+      ctx,
+      "Commands:\n/add <amount> <description>\n/balances\n/settle\n/history\n/invite\n\nUse /addexpense (or the add button) for guided flow.\nThis Telegram group chat is auto-linked as one expense group."
+    );
+    return;
+  }
+
   await replyWithKeyboard(
     ctx,
-    "Commands:\n/newgroup <name>\n/invite\n/join <groupId>\n/add <amount> <description>\n/balances\n/settle\n/history\n/groups\n\nTap 💸 Add Expense for guided flow.\nIn Telegram group chats, the chat itself is auto-linked."
+    "Commands:\n/newgroup <name>\n/invite\n/join <groupId>\n/add <amount> <description>\n/balances\n/settle\n/history\n/groups\n\nUse /addexpense (or the add button) for guided flow.\nIn Telegram group chats, the chat itself is auto-linked."
   );
 });
 
@@ -795,6 +970,7 @@ bot.command("groups", async (ctx) => {
 bot.command("add", async (ctx) => {
   clearConversation(ctx);
 
+  const args = ctx.match.trim();
   const activeGroup = await requireActiveGroup(ctx);
   if (!activeGroup) {
     return;
@@ -805,11 +981,13 @@ bot.command("add", async (ctx) => {
     return;
   }
 
-  const args = ctx.match.trim();
   const [amountRaw, ...descriptionParts] = args.split(" ");
 
   if (!amountRaw || descriptionParts.length === 0) {
-    await replyWithKeyboard(ctx, "Usage: /add <amount> <description>");
+    await replyWithKeyboard(
+      ctx,
+      "Usage: /add <amount> <description> [@user ...]\nUse /addexpense for guided flow."
+    );
     return;
   }
 
@@ -820,11 +998,33 @@ bot.command("add", async (ctx) => {
   }
 
   const description = descriptionParts.join(" ").trim();
-  const members = await getGroupMembers(activeGroup.groupId);
+  const membersWithUsers = await getGroupMemberUsers(activeGroup.groupId);
+  const members = membersWithUsers.map(({ id, name }) => ({ id, name }));
 
   if (members.length === 0) {
     await replyWithKeyboard(ctx, "❌ Group has no members.");
     return;
+  }
+
+  const tagResolution = resolveTaggedGroupMemberIds(ctx, membersWithUsers);
+  let participants = members;
+
+  if (tagResolution.tagCount > 0) {
+    if (tagResolution.resolvedIds.size === 0) {
+      await replyWithKeyboard(
+        ctx,
+        "❌ Tagged users must be members of this group and known to the bot."
+      );
+      return;
+    }
+
+    const participantIds = new Set(tagResolution.resolvedIds);
+    participantIds.add(user.id);
+
+    participants = members.filter((member) => participantIds.has(member.id));
+    if (!participants.some((member) => member.id === user.id)) {
+      participants.push({ id: user.id, name: user.name });
+    }
   }
 
   await createEqualExpense({
@@ -833,11 +1033,11 @@ bot.command("add", async (ctx) => {
     description,
     paidById: user.id,
     paidByName: user.name,
-    participants: members,
+    participants,
   });
 
-  const participantNames = members.map((member) => member.name).join(", ");
-  const perPerson = formatEuro(Math.round(amountCents / members.length));
+  const participantNames = participants.map((member) => member.name).join(", ");
+  const perPerson = formatEuro(Math.round(amountCents / participants.length));
 
   await replyWithKeyboard(
     ctx,
@@ -846,9 +1046,7 @@ bot.command("add", async (ctx) => {
 });
 
 bot.command("addexpense", async (ctx) => {
-  await bot.api.sendMessage(ctx.chat.id, "Use /add or tap 💸 Add Expense.", {
-    reply_markup: MAIN_KEYBOARD,
-  });
+  await startExpenseConversation(ctx);
 });
 
 bot.command("balances", async (ctx) => {
@@ -1093,6 +1291,14 @@ bot.callbackQuery(/^history:delete:/, async (ctx) => {
     return;
   }
 
+  if (!ctx.from || expense.createdBy !== ctx.from.id.toString()) {
+    await ctx.answerCallbackQuery({
+      text: "Only the expense owner can delete it.",
+      show_alert: true,
+    });
+    return;
+  }
+
   await expenseService.deleteExpense(expenseId);
 
   await ctx.answerCallbackQuery({ text: "Expense deleted." });
@@ -1125,7 +1331,11 @@ bot.on("message:text", async (ctx) => {
     const amountCents = parseAmountToCents(input);
 
     if (!amountCents) {
-      await replyWithKeyboard(ctx, "Please enter a valid amount, e.g. 42.00");
+      await promptForConversationInput(
+        ctx,
+        "Please enter a valid amount, e.g. 42.00",
+        "e.g. 42.00"
+      );
       return;
     }
 
@@ -1135,7 +1345,7 @@ bot.on("message:text", async (ctx) => {
       amountCents,
     });
 
-    await replyWithKeyboard(ctx, "Description?");
+    await promptForConversationInput(ctx, "Description?", "e.g. Dinner");
     return;
   }
 
@@ -1181,7 +1391,45 @@ bot.on("message:text", async (ctx) => {
 
 bot.catch((error) => {
   console.error("Bot error:", error.error);
+
+  if (error.error instanceof Error && error.error.stack) {
+    console.error("Bot error stack:", error.error.stack);
+  }
+
+  console.error("Bot error update:", JSON.stringify(error.ctx.update));
 });
 
-bot.start();
-console.log("🤖 Splitbot is running...");
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled rejection:", reason);
+});
+
+process.on("uncaughtException", (error) => {
+  console.error("Uncaught exception:", error);
+});
+
+async function startBot(): Promise<void> {
+  try {
+    const me = await bot.api.getMe();
+    const botIdentity = me.username ? `@${me.username}` : me.id.toString();
+    console.log(`🤖 Starting Splitbot as ${botIdentity}`);
+
+    const webhookInfo = await bot.api.getWebhookInfo();
+    if (webhookInfo.url) {
+      console.warn(
+        `Webhook is configured (${webhookInfo.url}). Deleting webhook for long polling.`
+      );
+      await bot.api.deleteWebhook({ drop_pending_updates: false });
+    }
+
+    await bot.start({
+      onStart: () => {
+        console.log("🤖 Splitbot is running...");
+      },
+    });
+  } catch (error) {
+    console.error("Failed to start bot:", error);
+    process.exit(1);
+  }
+}
+
+void startBot();

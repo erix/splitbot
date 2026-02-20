@@ -119,6 +119,10 @@ export function simplifyDebts(balances: Balance[]): Settlement[] {
   const workingBalances = balances.map((b) => ({ ...b }));
   const settlements: Settlement[] = [];
 
+  if (workingBalances.length === 0) {
+    return settlements;
+  }
+
   while (true) {
     // Find max creditor (person owed the most)
     let maxCreditor = workingBalances.reduce((max, b) =>

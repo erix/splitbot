@@ -9,24 +9,25 @@ All money values are stored as integer cents.
 
 ## Features
 
-- Persistent Telegram keyboard UI:
-  - `💸 Add Expense`
-  - `💰 Balances`
-  - `✅ Settle Up`
-  - `📋 History`
-  - `⚙️ Groups`
+- Context-aware Telegram keyboard UI:
+  - Private chat: `💸 Add Expense`, `💰 Balances`, `✅ Settle Up`, `📋 History`, `⚙️ Groups`
+  - Group chat: `/addexpense 💸`, `/balances 💰`, `/settle ✅`, `/history 📋`
 - Conversational expense flow:
   - amount -> description -> payer -> participants -> confirmation
+  - started via `💸 Add Expense` button or `/addexpense`
 - Quick command add:
-  - `/add <amount> <description>`
+  - `/add <amount> <description> [@user ...]`
+  - if users are tagged, split is among tagged users + expense creator
+  - if no users are tagged, split is among all group members
 - Settlement flow with inline `✅ Mark paid`
-- History flow with inline `🗑 Delete`
+- History flow with inline `🗑 Delete` (only expense owner can delete)
 - Invite links via Telegram deep links:
   - `/invite`
   - `/start join_<groupId>`
 - Real Telegram group support:
   - each Telegram group chat auto-maps to one Splitbot group
   - members are synced automatically when they interact with the bot
+  - `/groups` is available in private chat only
 
 ## How Group Mapping Works
 
@@ -104,6 +105,7 @@ npm run dev
 You should see:
 
 ```text
+🤖 Starting Splitbot as @<your_bot_username>
 🤖 Splitbot is running...
 ```
 
@@ -112,11 +114,12 @@ You should see:
 Core commands:
 - `/start`
 - `/help`
-- `/add <amount> <description>`
+- `/addexpense`
+- `/add <amount> <description> [@user ...]`
 - `/balances`
 - `/settle`
 - `/history`
-- `/groups`
+- `/groups` (private chat only)
 - `/cancel`
 
 Private/group-management commands:
@@ -140,7 +143,8 @@ Private/group-management commands:
 ```text
 (inside group)
 /start
-/add 25 Snacks
+/addexpense
+/add 25 Snacks @alice
 /balances
 ```
 

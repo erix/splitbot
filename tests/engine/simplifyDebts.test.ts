@@ -3,6 +3,11 @@ import { simplifyDebts } from "../../src/engine/index.js";
 import type { Balance } from "../../src/types/index.js";
 
 describe("simplifyDebts", () => {
+  it("should return empty array for empty balances", () => {
+    const settlements = simplifyDebts([]);
+    expect(settlements).toEqual([]);
+  });
+
   it("should simplify A->B->C chain into A->C", () => {
     const balances: Balance[] = [
       { userId: "alice", balance: -1000 }, // Owes 1000
