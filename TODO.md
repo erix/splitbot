@@ -64,41 +64,90 @@ Upsert via UserRepo: Telegram id (as string), first_name, username.
 ## Splitwise Export Validation (Golden Dataset)
 
 Real Splitwise exports live in `test-data/` — **never committed to git**.
+4 real group exports are already there.
 
-Drop CSV exports from Splitwise there:
-- Export via Splitwise → Settings → Export Data → CSV
+### CSV Format
+```
+Date,Description,Category,Cost,Currency,<Member1>,<Member2>,...
+```
+- Each member column: **positive** = this person is owed money (they paid)
+- **negative** = this person owes money
+- Last row: `Total balance` — the expected final net balance per person
+- Rows with Category `Payment` = a settlement between two people
 
 ### What to build: `tests/engine/splitwise-validation.test.ts`
 
-1. **Parse the CSV** — Splitwise export format:
-   ```
-   Date,Description,Currency,Cost,Category,<Member1>,<Member2>,...
-   ```
-   Each member column shows their share (positive = owed to payer, negative = owes).
+#### Parser (helper function)
+```typescript
+function parseSplitwiseCSV(filepath: string): {
+  expenses: Array<{ description: string; members: Record<string, number> }>, // amounts in cents
+  expectedBalances: Record<string, number> // from "Total balance" row, in cents
+}
+```
+- Skip the "Total balance" row when building expenses
+- Convert EUR amounts → cents (multiply by 100, round to integer)
+- Treat ALL rows (including Payments) as balance adjustments — just add them to running totals
+- The simplest approach: sum all member columns across all rows → final balance per member
 
-2. **Run our engine** against the same data:
-   - Parse each row into an `Expense` object
-   - Run `calculateBalances()` + `simplifyDebts()`
+#### Validation logic
+```typescript
+// Sum all member values across all non-"Total balance" rows
+// Compare to the "Total balance" row
+// Tolerance: ±1 cent per member (rounding)
+```
 
-3. **Compare output** to Splitwise's final balances (last rows of the CSV show totals):
-   - If our numbers match Splitwise's → engine is correct ✅
-   - Any mismatch → find and fix the edge case
+#### The 4 files and their expected final balances:
 
-4. **Pay attention to:**
-   - Rounding differences (Splitwise rounds differently in some cases)
-   - Unequal splits / percentage splits in the export
-   - Currencies (if mixed)
-   - Deleted expenses (marked in export)
+**splitwise-ski-2024.csv** (5 people, ski trip Austria 2024)
+- Erik: €0.00
+- Patrick Schmidt: +€73.62 (is owed)
+- Daniel Huber: €0.00
+- Mika: €0.00
+- Luca Siciliano Viglieri: -€73.62 (owes Patrick)
+
+**splitwise-daniel-erik-2019.csv** (2 people, trip 2019)
+- Daniel Huber: €0.00
+- Erik Simko: €0.00 (all settled)
+
+**splitwise-ski-2023.csv** (5 people, ski trip 2023)
+- All members: €0.00 (all settled)
+
+**splitwise-ski-2019-2020.csv** (6 people, ski trips 2019+2020)
+- All members: €0.00 (all settled)
+
+#### Key edge cases to cover:
+- Unequal splits (e.g. `ZwiWei Thaya Day 1: 14.66, -7.33, -7.33` → rounding)
+- 3-way splits that don't divide evenly
+- Payments (Category=Payment) treated correctly
+- Multi-year group (2019-2020 file)
+- Emoji in descriptions 🍻🛫🧀
 
 ### Key insight
-This gives us a real-world golden dataset. If our engine matches Splitwise on Erik's
-actual data, we can trust it for production use.
+If `calculateBalances()` on raw member-column data matches the Splitwise totals
+within ±1 cent → engine is correct for real-world use.
 
-The test file should skip gracefully if no CSV is present:
+The test file should skip gracefully if CSV is missing:
 ```typescript
-const csvPath = path.join(__dirname, '../../test-data/splitwise-export.csv')
-if (!fs.existsSync(csvPath)) {
-  test.skip('No Splitwise export found in test-data/')
+import { describe, test, expect } from 'vitest'
+import * as fs from 'fs'
+import * as path from 'path'
+
+const files = [
+  { name: 'splitwise-ski-2024.csv', label: 'Ski 2024' },
+  { name: 'splitwise-daniel-erik-2019.csv', label: 'Daniel+Erik 2019' },
+  { name: 'splitwise-ski-2023.csv', label: 'Ski 2023' },
+  { name: 'splitwise-ski-2019-2020.csv', label: 'Ski 2019-2020' },
+]
+
+for (const { name, label } of files) {
+  const csvPath = path.join(__dirname, '../../test-data', name)
+  const exists = fs.existsSync(csvPath)
+
+  describe.skipIf(!exists)(`Splitwise: ${label}`, () => {
+    test('engine balances match Splitwise totals (±1 cent)', () => {
+      // parse, calculate, compare
+    })
+  })
 }
 ```
 
