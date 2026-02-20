@@ -268,15 +268,22 @@ async function getGroupMembers(groupId: string): Promise<GroupMemberOption[]> {
   return members.map(({ id, name }) => ({ id, name }));
 }
 
-function resolveTaggedGroupMemberIds(
-  ctx: Context,
-  groupMembers: Array<GroupMemberOption & { username?: string }>
-): { tagCount: number; resolvedIds: Set<string> } {
+async function resolveTaggedGroupMemberIds(params: {
+  ctx: Context;
+  groupId: string;
+  groupMembers: Array<GroupMemberOption & { username?: string }>;
+}): Promise<{
+  tagCount: number;
+  resolvedIds: Set<string>;
+  unresolvedMentions: string[];
+}> {
+  const { ctx, groupId, groupMembers } = params;
   const message = ctx.message;
   if (!message || !("text" in message) || !message.text || !message.entities) {
     return {
       tagCount: 0,
       resolvedIds: new Set<string>(),
+      unresolvedMentions: [],
     };
   }
 
@@ -292,27 +299,70 @@ function resolveTaggedGroupMemberIds(
 
   let tagCount = 0;
   const resolvedIds = new Set<string>();
+  const unresolvedMentionKeys = new Set<string>();
+  const unresolvedMentions: string[] = [];
+
+  const markUnresolvedMention = (mentionText: string): void => {
+    const normalizedMention = normalizeUsername(mentionText);
+    if (!normalizedMention || unresolvedMentionKeys.has(normalizedMention)) {
+      return;
+    }
+
+    unresolvedMentionKeys.add(normalizedMention);
+    unresolvedMentions.push(`@${normalizedMention}`);
+  };
+
+  const ensureGroupMembership = async (userId: string, userName: string): Promise<void> => {
+    if (memberIds.has(userId)) {
+      return;
+    }
+
+    await groupService.addMember(groupId, userId, userName);
+    memberIds.add(userId);
+  };
+
   for (const entity of message.entities) {
     if (entity.type === "mention") {
       tagCount += 1;
       const mentionText = message.text.slice(entity.offset, entity.offset + entity.length);
-      const taggedUserId = memberIdByUsername.get(normalizeUsername(mentionText));
+      const normalizedMention = normalizeUsername(mentionText);
+      const taggedUserId = memberIdByUsername.get(normalizedMention);
       if (taggedUserId) {
         resolvedIds.add(taggedUserId);
+        continue;
       }
+
+      const knownUser = await userRepo.findByUsername(normalizedMention);
+      if (knownUser) {
+        await ensureGroupMembership(knownUser.id, knownUser.name);
+        resolvedIds.add(knownUser.id);
+        if (knownUser.username) {
+          memberIdByUsername.set(normalizeUsername(knownUser.username), knownUser.id);
+        }
+      } else {
+        markUnresolvedMention(mentionText);
+      }
+
       continue;
     }
 
     if (entity.type === "text_mention") {
       tagCount += 1;
-      const taggedUserId = entity.user.id.toString();
-      if (memberIds.has(taggedUserId)) {
-        resolvedIds.add(taggedUserId);
+      if (entity.user.is_bot) {
+        continue;
+      }
+
+      const taggedUser = await upsertTelegramUserFromData(entity.user);
+      await ensureGroupMembership(taggedUser.id, taggedUser.name);
+      resolvedIds.add(taggedUser.id);
+
+      if (entity.user.username) {
+        memberIdByUsername.set(normalizeUsername(entity.user.username), taggedUser.id);
       }
     }
   }
 
-  return { tagCount, resolvedIds };
+  return { tagCount, resolvedIds, unresolvedMentions };
 }
 
 async function seedGroupMembersFromChatAdmins(
@@ -742,9 +792,15 @@ async function showMembers(ctx: Context): Promise<void> {
       ? `Known members: ${sortedMembers.length}`
       : `Known members: ${sortedMembers.length} / Telegram members: ${telegramMemberCount}`;
 
-  const hint = isTelegramGroupChat(ctx)
-    ? "\n\nTip: this list only includes members known to the bot (admins, users who joined while bot was in chat, or users who interacted)."
-    : "";
+  const hasCoverageGap =
+    telegramMemberCount !== null && sortedMembers.length < telegramMemberCount;
+
+  let hint = "";
+  if (isTelegramGroupChat(ctx)) {
+    hint = hasCoverageGap
+      ? "\n\nTip: Telegram bots cannot fetch a full member list on demand. Ask missing people to open /invite once or send a message in this group."
+      : "\n\nTip: To stay in sync, each member should interact with the bot at least once.";
+  }
 
   await replyWithKeyboard(
     ctx,
@@ -828,7 +884,7 @@ bot.command("start", async (ctx) => {
 
     await replyWithKeyboard(
       ctx,
-      `✅ This Telegram group is linked: "${group.groupName}".\nMembers are added automatically when they interact with the bot or join while the bot is present.`
+      `✅ This Telegram group is linked: "${group.groupName}".\nMembers are synced from admins, joins, and interactions.\nTo include everyone, ask members to open /invite once or send a message in this group.`
     );
     return;
   }
@@ -867,7 +923,7 @@ bot.command("help", async (ctx) => {
   if (isTelegramGroupChat(ctx)) {
     await replyWithKeyboard(
       ctx,
-      "Commands:\n/add <amount> <description>\n/balances\n/settle\n/history\n/members\n/invite\n\nUse /addexpense (or the add button) for guided flow.\nThis Telegram group chat is auto-linked as one expense group."
+      "Commands:\n/add <amount> <description>\n/balances\n/settle\n/history\n/members\n/invite\n\nUse /addexpense (or the add button) for guided flow.\nTelegram bots cannot fetch full group members on demand, so ask everyone to use /invite once if missing."
     );
     return;
   }
@@ -894,7 +950,7 @@ bot.command("newgroup", async (ctx) => {
 
     await replyWithKeyboard(
       ctx,
-      `This Telegram chat is already linked as "${group.groupName}".\nAdd people directly in Telegram and they will be synced automatically when they interact with the bot.`
+      `This Telegram chat is already linked as "${group.groupName}".\nUse /invite so each member can register once.`
     );
     return;
   }
@@ -938,14 +994,20 @@ bot.command("join", async (ctx) => {
   clearConversation(ctx);
 
   if (isTelegramGroupChat(ctx)) {
+    const user = await upsertTelegramUser(ctx);
     const group = await requireActiveGroup(ctx);
     if (!group) {
       return;
     }
 
+    if (user) {
+      await groupService.addMember(group.groupId, user.id, user.name);
+      rememberGroupForUser(user.id, group.groupId);
+    }
+
     await replyWithKeyboard(
       ctx,
-      `This Telegram chat is already linked as "${group.groupName}".\nYou do not need /join inside the group chat.`
+      `This Telegram chat is already linked as "${group.groupName}".\nYou are now synced as a member for this group.`
     );
     return;
   }
@@ -983,8 +1045,7 @@ bot.command("invite", async (ctx) => {
 
   const botUsername = await getBotUsername();
   if (isTelegramGroupChat(ctx)) {
-    const baseMessage =
-      `Invite for "${activeGroup.groupName}"\n\nAdd people directly to this Telegram group chat.\nThey will be synced as members when they interact with the bot.`;
+    const baseMessage = `Invite for "${activeGroup.groupName}"\n\nTelegram bots cannot fetch full group members on demand.\nAsk everyone to open the private invite link once to register.`;
 
     if (!botUsername) {
       await replyWithKeyboard(ctx, baseMessage);
@@ -994,7 +1055,7 @@ bot.command("invite", async (ctx) => {
     const inviteLink = `https://t.me/${botUsername}?start=join_${activeGroup.groupId}`;
     await replyWithKeyboard(
       ctx,
-      `${baseMessage}\n\nOptional private fallback:\n${inviteLink}`
+      `${baseMessage}\n\nInvite link:\n${inviteLink}`
     );
     return;
   }
@@ -1053,25 +1114,40 @@ bot.command("add", async (ctx) => {
   }
 
   const description = descriptionParts.join(" ").trim();
-  const membersWithUsers = await getGroupMemberUsers(activeGroup.groupId);
-  const members = membersWithUsers.map(({ id, name }) => ({ id, name }));
+  let membersWithUsers = await getGroupMemberUsers(activeGroup.groupId);
+  let members = membersWithUsers.map(({ id, name }) => ({ id, name }));
 
   if (members.length === 0) {
     await replyWithKeyboard(ctx, "❌ Group has no members.");
     return;
   }
 
-  const tagResolution = resolveTaggedGroupMemberIds(ctx, membersWithUsers);
+  const tagResolution = await resolveTaggedGroupMemberIds({
+    ctx,
+    groupId: activeGroup.groupId,
+    groupMembers: membersWithUsers,
+  });
   let participants = members;
+
+  if (tagResolution.unresolvedMentions.length > 0) {
+    await replyWithKeyboard(
+      ctx,
+      `❌ Could not resolve: ${tagResolution.unresolvedMentions.join(", ")}.\nAsk them to open /invite once or send a message in this group.`
+    );
+    return;
+  }
 
   if (tagResolution.tagCount > 0) {
     if (tagResolution.resolvedIds.size === 0) {
       await replyWithKeyboard(
         ctx,
-        "❌ Tagged users must be members of this group and known to the bot."
+        "❌ Tagged users must be resolvable members."
       );
       return;
     }
+
+    membersWithUsers = await getGroupMemberUsers(activeGroup.groupId);
+    members = membersWithUsers.map(({ id, name }) => ({ id, name }));
 
     const participantIds = new Set(tagResolution.resolvedIds);
     participantIds.add(user.id);

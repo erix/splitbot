@@ -18,6 +18,7 @@ All money values are stored as integer cents.
 - Quick command add:
   - `/add <amount> <description> [@user ...]`
   - if users are tagged, split is among tagged users + expense creator
+  - tagged users with known Telegram identities are auto-added to the group
   - if no users are tagged, split is among all group members
 - Settlement flow with inline `✅ Mark paid`
 - History flow with inline `🗑 Delete` (only expense owner can delete)
@@ -45,6 +46,7 @@ All money values are stored as integer cents.
 Telegram API limitation:
 - Bots cannot fetch a full member list for every group member on demand.
 - Member sync is interaction/event-based, not a guaranteed full instant import.
+- To reach full coverage, ask members to open `/invite` once (private deep link) or send a message in the group.
 - If you want broader message visibility in groups, disable bot privacy in BotFather (`/setprivacy`).
 
 ## Architecture

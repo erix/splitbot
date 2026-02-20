@@ -42,16 +42,28 @@ export class GroupRepo {
       .from(groupMembers)
       .where(eq(groupMembers.groupId, id));
 
+    const uniqueMemberIds = Array.from(new Set(members.map((member) => member.userId)));
+
     return {
       id: group.id,
       name: group.name,
-      members: members.map((m) => m.userId),
+      members: uniqueMemberIds,
       createdAt: group.createdAt,
       createdBy: group.createdBy,
     };
   }
 
   async addMember(groupId: string, userId: string): Promise<void> {
+    const existingMembership = await db
+      .select({ id: groupMembers.id })
+      .from(groupMembers)
+      .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)))
+      .get();
+
+    if (existingMembership) {
+      return;
+    }
+
     await db.insert(groupMembers).values({
       id: `${groupId}_${userId}_${Date.now()}`,
       groupId,
