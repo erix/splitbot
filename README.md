@@ -10,8 +10,8 @@ All money values are stored as integer cents.
 ## Features
 
 - Context-aware Telegram keyboard UI:
-  - Private chat: `💸 Add Expense`, `💰 Balances`, `✅ Settle Up`, `📋 History`, `⚙️ Groups`
-  - Group chat: `/addexpense 💸`, `/balances 💰`, `/settle ✅`, `/history 📋`
+  - Private chat: `💸 Add Expense`, `💰 Balances`, `✅ Settle Up`, `📋 History`, `👥 Members`, `⚙️ Groups`
+  - Group chat: `/addexpense 💸`, `/balances 💰`, `/settle ✅`, `/history 📋`, `/members 👥`
 - Conversational expense flow:
   - amount -> description -> payer -> participants -> confirmation
   - started via `💸 Add Expense` button or `/addexpense`
@@ -119,6 +119,7 @@ Core commands:
 - `/balances`
 - `/settle`
 - `/history`
+- `/members`
 - `/groups` (private chat only)
 - `/cancel`
 

@@ -48,14 +48,18 @@ function buildMainKeyboard(params: {
       .text("/balances 💰")
       .row()
       .text("/settle ✅")
-      .text("/history 📋");
+      .text("/history 📋")
+      .row()
+      .text("/members 👥");
   } else {
     keyboard
       .text("💸 Add Expense")
       .text("💰 Balances")
       .row()
       .text("✅ Settle Up")
-      .text("📋 History");
+      .text("📋 History")
+      .row()
+      .text("👥 Members");
   }
 
   if (params.includeGroupsButton) {
@@ -701,6 +705,53 @@ async function showGroups(ctx: Context): Promise<void> {
   await replyWithKeyboard(ctx, `⚙️ Your groups\n${lines.join("\n")}`);
 }
 
+async function showMembers(ctx: Context): Promise<void> {
+  clearConversation(ctx);
+
+  const activeGroup = await requireActiveGroup(ctx);
+  if (!activeGroup) {
+    return;
+  }
+
+  const chatId = getChatId(ctx);
+  let telegramMemberCount: number | null = null;
+
+  if (isTelegramGroupChat(ctx) && chatId !== null) {
+    await seedGroupMembersFromChatAdmins(chatId, activeGroup.groupId);
+    try {
+      telegramMemberCount = await bot.api.getChatMemberCount(chatId);
+    } catch (error) {
+      console.error("Failed to fetch Telegram member count:", error);
+    }
+  }
+
+  const members = await getGroupMemberUsers(activeGroup.groupId);
+  if (members.length === 0) {
+    await replyWithKeyboard(ctx, `👥 ${activeGroup.groupName}\n\nNo members known yet.`);
+    return;
+  }
+
+  const sortedMembers = [...members].sort((a, b) => a.name.localeCompare(b.name));
+  const lines = sortedMembers.map((member, index) => {
+    const usernameSuffix = member.username ? ` (@${member.username})` : "";
+    return `${index + 1}. ${member.name}${usernameSuffix}`;
+  });
+
+  const countLine =
+    telegramMemberCount === null
+      ? `Known members: ${sortedMembers.length}`
+      : `Known members: ${sortedMembers.length} / Telegram members: ${telegramMemberCount}`;
+
+  const hint = isTelegramGroupChat(ctx)
+    ? "\n\nTip: this list only includes members known to the bot (admins, users who joined while bot was in chat, or users who interacted)."
+    : "";
+
+  await replyWithKeyboard(
+    ctx,
+    `👥 ${activeGroup.groupName}\n${countLine}\n\n${lines.join("\n")}${hint}`
+  );
+}
+
 bot.use(async (ctx, next) => {
   const chatId = ctx.chat?.id ?? "n/a";
   const chatType = ctx.chat?.type ?? "n/a";
@@ -791,7 +842,7 @@ bot.command("start", async (ctx) => {
       const prefix = joinedGroup.alreadyMember ? "Active group set to" : "Joined";
       await replyWithKeyboard(
         ctx,
-        `✅ ${prefix} "${joinedGroup.groupName}" via invite.\n\nUse the keyboard below or these commands:\n/newgroup <name>\n/invite\n/join <groupId>\n/add <amount> <description>\n/balances\n/settle\n/history\n/groups`
+        `✅ ${prefix} "${joinedGroup.groupName}" via invite.\n\nUse the keyboard below or these commands:\n/newgroup <name>\n/invite\n/join <groupId>\n/add <amount> <description>\n/balances\n/settle\n/history\n/members\n/groups`
       );
       return;
     }
@@ -806,7 +857,7 @@ bot.command("start", async (ctx) => {
   const helloName = user?.name || "there";
   await replyWithKeyboard(
     ctx,
-    `Welcome ${helloName}!\n\nUse the keyboard below or these commands:\n/newgroup <name>\n/invite\n/join <groupId>\n/add <amount> <description>\n/balances\n/settle\n/history\n/groups\n\nTip: if you add me to a real Telegram group, that chat is auto-linked as one expense group.`
+    `Welcome ${helloName}!\n\nUse the keyboard below or these commands:\n/newgroup <name>\n/invite\n/join <groupId>\n/add <amount> <description>\n/balances\n/settle\n/history\n/members\n/groups\n\nTip: if you add me to a real Telegram group, that chat is auto-linked as one expense group.`
   );
 });
 
@@ -816,14 +867,14 @@ bot.command("help", async (ctx) => {
   if (isTelegramGroupChat(ctx)) {
     await replyWithKeyboard(
       ctx,
-      "Commands:\n/add <amount> <description>\n/balances\n/settle\n/history\n/invite\n\nUse /addexpense (or the add button) for guided flow.\nThis Telegram group chat is auto-linked as one expense group."
+      "Commands:\n/add <amount> <description>\n/balances\n/settle\n/history\n/members\n/invite\n\nUse /addexpense (or the add button) for guided flow.\nThis Telegram group chat is auto-linked as one expense group."
     );
     return;
   }
 
   await replyWithKeyboard(
     ctx,
-    "Commands:\n/newgroup <name>\n/invite\n/join <groupId>\n/add <amount> <description>\n/balances\n/settle\n/history\n/groups\n\nUse /addexpense (or the add button) for guided flow.\nIn Telegram group chats, the chat itself is auto-linked."
+    "Commands:\n/newgroup <name>\n/invite\n/join <groupId>\n/add <amount> <description>\n/balances\n/settle\n/history\n/members\n/groups\n\nUse /addexpense (or the add button) for guided flow.\nIn Telegram group chats, the chat itself is auto-linked."
   );
 });
 
@@ -967,6 +1018,10 @@ bot.command("groups", async (ctx) => {
   await showGroups(ctx);
 });
 
+bot.command("members", async (ctx) => {
+  await showMembers(ctx);
+});
+
 bot.command("add", async (ctx) => {
   clearConversation(ctx);
 
@@ -1075,6 +1130,10 @@ bot.hears("✅ Settle Up", async (ctx) => {
 
 bot.hears("📋 History", async (ctx) => {
   await showHistory(ctx);
+});
+
+bot.hears("👥 Members", async (ctx) => {
+  await showMembers(ctx);
 });
 
 bot.hears("⚙️ Groups", async (ctx) => {
