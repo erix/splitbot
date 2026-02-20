@@ -1,265 +1,184 @@
 # Splitbot
 
-A Splitwise-like expense splitting engine with a Telegram bot frontend. Clean, frontend-agnostic architecture designed for extensibility.
+Splitbot is a Splitwise-style expense tracker with:
+- a pure TypeScript expense-splitting engine,
+- SQLite persistence via Drizzle,
+- and a Telegram bot interface built with Grammy.
+
+All money values are stored as integer cents.
+
+## Features
+
+- Persistent Telegram keyboard UI:
+  - `💸 Add Expense`
+  - `💰 Balances`
+  - `✅ Settle Up`
+  - `📋 History`
+  - `⚙️ Groups`
+- Conversational expense flow:
+  - amount -> description -> payer -> participants -> confirmation
+- Quick command add:
+  - `/add <amount> <description>`
+- Settlement flow with inline `✅ Mark paid`
+- History flow with inline `🗑 Delete`
+- Invite links via Telegram deep links:
+  - `/invite`
+  - `/start join_<groupId>`
+- Real Telegram group support:
+  - each Telegram group chat auto-maps to one Splitbot group
+  - members are synced automatically when they interact with the bot
+
+## How Group Mapping Works
+
+### Private chat with bot
+- Create a manual group with `/newgroup <name>`.
+- Join via `/join <groupId>` or invite link.
+- Active group is stored per chat.
+
+### Real Telegram group chat
+- Add bot to a Telegram group.
+- Run `/start` once in that group.
+- The chat is auto-linked to an internal group ID: `tgchat_<chatId>`.
+- People are added to the expense group when they interact with the bot.
+
+Telegram API limitation:
+- Bots cannot fetch a full member list for every group member on demand.
+- Member sync is interaction/event-based, not a guaranteed full instant import.
+- If you want broader message visibility in groups, disable bot privacy in BotFather (`/setprivacy`).
 
 ## Architecture
 
-Splitbot follows a layered architecture that separates business logic from I/O:
+Layered design:
 
-```
+`engine (pure logic) -> services (use cases) -> adapters (bot/api)`
+
+- `src/engine/`: Pure splitting and balance logic, no I/O
+- `src/services/`: Use cases combining repositories + engine
+- `src/storage/`: SQLite + Drizzle repos/schema
+- `src/bot/`: Telegram adapter
+- `src/api/`: REST API stub
+
+## Project Structure
+
+```text
 src/
-├── types/          # Shared TypeScript interfaces
-├── engine/         # Pure business logic (NO I/O)
-├── storage/        # Repository pattern with SQLite + Drizzle ORM
-├── services/       # Use cases combining engine + storage
-├── bot/            # Telegram adapter (Grammy)
-└── api/            # REST API stub (Express, 501s only)
-
+  api/
+  bot/
+  engine/
+  services/
+  storage/
+  types/
 tests/
-├── engine/         # Comprehensive unit tests
-└── services/       # Integration tests (future)
+  engine/
 ```
 
-### Key Principles
+## Quick Start
 
-- **Pure Engine**: All business logic is in `src/engine/` as pure functions with no I/O
-- **Repository Pattern**: Storage abstraction in `src/storage/` makes it easy to swap databases
-- **Frontend Agnostic**: Services layer provides clean API for any frontend (Telegram, REST, CLI, etc.)
-- **Type Safety**: Strict TypeScript with all amounts in INTEGER CENTS for precision
-
-## Tech Stack
-
-- **TypeScript** (strict mode)
-- **Vitest** - Testing framework
-- **better-sqlite3** - SQLite database
-- **Drizzle ORM** - Type-safe database toolkit
-- **Grammy** - Telegram Bot framework
-- **Express** - REST API (stub)
-- **dotenv** - Environment configuration
-
-## Core Types
-
-All amounts are in **INTEGER CENTS** to avoid floating-point precision issues.
-
-```typescript
-type SplitMethod = "equal" | "percentage" | "exact"
-
-interface Expense {
-  id: string
-  groupId: string
-  description: string
-  amount: number // cents
-  currency: string
-  paidBy: string
-  participants: string[]
-  splits: Record<string, number> // userId -> cents
-  splitMethod: SplitMethod
-  createdAt: Date
-  createdBy: string
-}
-
-interface Settlement {
-  from: string
-  to: string
-  amount: number // cents
-}
-
-interface Balance {
-  userId: string
-  balance: number // positive = owed money, negative = owes money (cents)
-}
-```
-
-## Setup
-
-### Prerequisites
+### 1. Prerequisites
 
 - Node.js 18+
-- npm or yarn
-- Telegram bot token (from [@BotFather](https://t.me/botfather))
+- npm
+- Telegram bot token from [@BotFather](https://t.me/BotFather)
 
-### Installation
+### 2. Install
 
 ```bash
-# Install dependencies
 npm install
-
-# Copy environment template
 cp .env.example .env
+```
 
-# Edit .env and add your Telegram bot token
-nano .env
+Set `TELEGRAM_BOT_TOKEN` in `.env`.
 
-# Run database migration
+### 3. Database
+
+```bash
 npm run migrate
-
-# Run tests
-npm test
-
-# Run engine tests only
-npm run test:engine
 ```
 
-### Running the Bot
+### 4. Run
 
 ```bash
-# Development mode (auto-reload)
 npm run dev
-
-# Production mode
-npm run build
-node dist/bot/index.js
 ```
 
-### Running the API Stub
+You should see:
 
-```bash
-npm run build
-node dist/api/index.js
+```text
+🤖 Splitbot is running...
 ```
 
-Note: The REST API currently returns 501 Not Implemented for all endpoints. Use the Telegram bot.
+## Commands
 
-## Testing
+Core commands:
+- `/start`
+- `/help`
+- `/add <amount> <description>`
+- `/balances`
+- `/settle`
+- `/history`
+- `/groups`
+- `/cancel`
 
-The engine has **36 comprehensive unit tests** covering all edge cases:
+Private/group-management commands:
+- `/newgroup <name>`
+- `/join <groupId>`
+- `/invite`
 
-```bash
-# Run all tests
-npm test
+## Example Usage
 
-# Run only engine tests
-npm run test:engine
+### Private chat flow
 
-# Watch mode
-npm test -- --watch
-```
-
-Test coverage includes:
-- `splitEqually`: Rounding, remainders, edge cases
-- `splitByPercentage`: Validation, rounding
-- `splitByExactAmounts`: Validation
-- `calculateBalances`: Single/multiple expenses, multiple payers
-- `simplifyDebts`: Chain simplification, circular debts
-- `applySettlement`: Balance updates
-
-## Telegram Bot Commands
-
-- `/start` - Welcome message
-- `/newgroup <name>` - Create a new group
-- `/join <group_id>` - Join an existing group
-- `/addexpense <amount> <description>` - Add an expense (split equally)
-- `/balances` - View current balances
-- `/settle` - See suggested settlements to minimize transactions
-- `/history` - View recent expenses
-- `/help` - Show help message
-
-### Example Flow
-
-```
+```text
 /newgroup Weekend Trip
-/addexpense 50.00 Dinner at restaurant
-/addexpense 30.00 Taxi to hotel
+/add 42 Dinner
 /balances
 /settle
 ```
 
-## Engine API
+### Telegram group flow
 
-The pure business logic functions in `src/engine/`:
-
-### Split Functions
-
-```typescript
-// Split equally with proper rounding
-splitEqually(amountCents: number, participants: string[]): Record<string, number>
-
-// Split by percentage (must sum to 100)
-splitByPercentage(amountCents: number, shares: Record<string, number>): Record<string, number>
-
-// Split by exact amounts (must sum to total)
-splitByExactAmounts(amountCents: number, shares: Record<string, number>): Record<string, number>
+```text
+(inside group)
+/start
+/add 25 Snacks
+/balances
 ```
 
-### Balance Functions
+## Development
 
-```typescript
-// Calculate balances from expenses
-calculateBalances(expenses: Expense[]): Balance[]
-
-// Minimize number of transactions (greedy algorithm)
-simplifyDebts(balances: Balance[]): Settlement[]
-
-// Apply a settlement to balances
-applySettlement(balances: Balance[], settlement: Settlement): Balance[]
+```bash
+npm run dev         # bot with watch mode
+npm run build       # compile TypeScript to dist/
+npm test            # all tests
+npm run test:engine # engine tests only
+npm run migrate     # push Drizzle schema
 ```
 
-## Adding a New Frontend Adapter
+## Testing
 
-Splitbot's architecture makes it easy to add new frontends (CLI, web app, Discord bot, etc.):
+Vitest is configured via `vitest.config.ts`.
 
-1. **Import services**: Use `GroupService`, `ExpenseService`, `BalanceService`
-2. **Parse input**: Convert your frontend's input to service method calls
-3. **Format output**: Convert service responses to your frontend's format
+Engine tests cover:
+- equal/percentage/exact splits
+- balance calculation
+- debt simplification
+- settlement application
+- splitwise validation datasets (when present)
 
-Example CLI adapter:
+## Environment
 
-```typescript
-import { GroupService, ExpenseService, BalanceService } from "./services"
-import { UserRepo, GroupRepo, ExpenseRepo, SettlementRepo } from "./storage"
+- `TELEGRAM_BOT_TOKEN`: required
+- `DATABASE_PATH`: optional, defaults to `./data/splitbot.db`
 
-// Initialize repos and services
-const groupService = new GroupService(new GroupRepo(), new UserRepo())
-const expenseService = new ExpenseService(new ExpenseRepo(), new UserRepo())
-const balanceService = new BalanceService(new ExpenseRepo(), new SettlementRepo())
+## Tech Stack
 
-// Parse CLI args and call services
-const [command, ...args] = process.argv.slice(2)
-
-if (command === "addexpense") {
-  const [groupId, amount, ...desc] = args
-  await expenseService.createExpense({
-    id: `exp_${Date.now()}`,
-    groupId,
-    description: desc.join(" "),
-    amountCents: Math.round(parseFloat(amount) * 100),
-    currency: "USD",
-    paidBy: "cli_user",
-    paidByName: "CLI User",
-    participants: [{ id: "cli_user", name: "CLI User" }],
-    splitMethod: "equal"
-  })
-}
-```
-
-## Storage Schema
-
-**users**: id, name, username, createdAt
-**groups**: id, name, createdAt, createdBy
-**group_members**: id, groupId, userId, joinedAt
-**expenses**: id, groupId, description, amount, currency, paidBy, splitMethod, createdAt, createdBy
-**expense_splits**: id, expenseId, userId, amount
-**settlements**: id, groupId, fromUserId, toUserId, amount, createdAt, createdBy
-
-## Scripts
-
-- `npm run dev` - Run bot in development mode (auto-reload)
-- `npm run build` - Build TypeScript to JavaScript
-- `npm test` - Run all tests
-- `npm run test:engine` - Run engine tests only
-- `npm run migrate` - Push database schema changes
+- TypeScript (strict)
+- Grammy
+- Drizzle ORM
+- better-sqlite3
+- Vitest
+- Express (API stub)
 
 ## License
 
 MIT
-
-## Contributing
-
-1. Add tests for any new engine functions
-2. Keep the engine pure (no I/O)
-3. Use INTEGER CENTS for all amounts
-4. Follow the repository pattern for storage
-
----
-
-Built with ❤️ using TypeScript and Claude Code
