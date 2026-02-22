@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Splitbot Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              accent: "#6366f1",
+            },
+            boxShadow: {
+              card: "0 12px 30px rgba(15, 23, 42, 0.08)",
+            },
+          },
+        },
+      };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+      :root {
+        --surface: #ffffff;
+        --muted: #64748b;
+      }
+
+      body {
+        font-family: "Manrope", sans-serif;
+      }
+
+      .font-display {
+        font-family: "Space Grotesk", sans-serif;
+      }
+
+      .card {
+        background: var(--surface);
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        border-radius: 1rem;
+        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+      }
+
+      .fade-in {
+        animation: fade-in 0.45s ease-out;
+      }
+
+      @keyframes fade-in {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      canvas {
+        min-height: 260px;
+      }
+    </style>
+  </head>
+  <body class="min-h-screen bg-slate-100 text-slate-900">
+    <div class="relative overflow-hidden">
+      <div
+        class="pointer-events-none absolute inset-x-0 top-0 h-64 bg-gradient-to-r from-indigo-100 via-violet-100 to-sky-100"
+      ></div>
+      <div
+        class="pointer-events-none absolute -top-20 right-0 h-72 w-72 rounded-full bg-indigo-300/20 blur-3xl"
+      ></div>
+      <div
+        class="pointer-events-none absolute top-24 left-0 h-64 w-64 rounded-full bg-violet-300/20 blur-3xl"
+      ></div>
+
+      <main class="relative mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <header class="mb-6 card fade-in p-5 sm:p-6">
+          <div class="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h1 class="font-display text-2xl font-bold text-slate-900 sm:text-3xl">
+                💸SplitbotDashboard
+              </h1>
+              <p class="mt-1 text-sm text-slate-600">Group-level expense analytics at a glance.</p>
+            </div>
+            <div class="w-full max-w-sm">
+              <label for="group-select" class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Group
+              </label>
+              <select
+                id="group-select"
+                class="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 outline-none transition focus:border-accent focus:ring-2 focus:ring-indigo-100"
+              ></select>
+            </div>
+          </div>
+        </header>
+
+        <div id="loading" class="mb-6 card p-6 text-sm font-semibold text-slate-600">Loading dashboard data...</div>
+        <div id="error" class="mb-6 hidden rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700"></div>
+        <div id="empty" class="hidden card p-8 text-center">
+          <p class="text-base font-semibold text-slate-700">No groups found.</p>
+          <p class="mt-2 text-sm text-slate-500">Create a group in Telegram first, then refresh this page.</p>
+        </div>
+
+        <section id="dashboard" class="hidden space-y-6">
+          <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <article class="card fade-in p-5">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Total Spend</p>
+              <p id="total-spend" class="mt-3 text-2xl font-bold text-slate-900">€0.00</p>
+            </article>
+            <article class="card fade-in p-5">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500"># Expenses</p>
+              <p id="expense-count" class="mt-3 text-2xl font-bold text-slate-900">0</p>
+            </article>
+            <article class="card fade-in p-5">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500"># Members</p>
+              <p id="member-count" class="mt-3 text-2xl font-bold text-slate-900">0</p>
+            </article>
+            <article class="card fade-in p-5">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Largest Expense</p>
+              <p id="largest-expense-amount" class="mt-3 text-2xl font-bold text-slate-900">€0.00</p>
+              <p id="largest-expense-label" class="mt-1 truncate text-xs text-slate-500">N/A</p>
+            </article>
+          </section>
+
+          <section class="grid gap-6 lg:grid-cols-2">
+            <div class="space-y-6">
+              <article class="card fade-in p-5">
+                <h2 class="font-display text-lg font-bold text-slate-900">SpendingbyDay</h2>
+                <p class="mb-4 text-sm text-slate-500">Daily spend totals in EUR.</p>
+                <div class="relative h-72"><canvas id="spending-day-chart"></canvas></div>
+              </article>
+
+              <article class="card fade-in p-5">
+                <h2 class="font-display text-lg font-bold text-slate-900">ByCategory</h2>
+                <p class="mb-4 text-sm text-slate-500">Expense distribution by category.</p>
+                <div class="relative h-72"><canvas id="category-chart"></canvas></div>
+              </article>
+            </div>
+
+            <div class="space-y-6">
+              <article class="card fade-in p-5">
+                <h2 class="font-display text-lg font-bold text-slate-900">PerPerson</h2>
+                <p class="mb-4 text-sm text-slate-500">Total paid by each member.</p>
+                <div class="relative h-72"><canvas id="person-chart"></canvas></div>
+              </article>
+
+              <article class="card fade-in p-5">
+                <h2 class="font-display text-lg font-bold text-slate-900">WhoOwesWho</h2>
+                <p class="mb-4 text-sm text-slate-500">Simplified settlement plan.</p>
+                <div class="overflow-x-auto">
+                  <table class="min-w-full text-sm">
+                    <thead>
+                      <tr class="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+                        <th class="pb-2 pr-3 font-semibold">From</th>
+                        <th class="pb-2 pr-3 font-semibold">To</th>
+                        <th class="pb-2 text-right font-semibold">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody id="settlements-body" class="divide-y divide-slate-100"></tbody>
+                  </table>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section class="card fade-in p-5">
+            <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <h2 class="font-display text-lg font-bold text-slate-900">Expenses</h2>
+              <button
+                id="sort-date"
+                class="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600 transition hover:border-slate-400 hover:text-slate-800"
+              >
+                Date ↓
+              </button>
+            </div>
+
+            <div class="overflow-x-auto">
+              <table class="min-w-full text-sm">
+                <thead>
+                  <tr class="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+                    <th class="pb-2 pr-4 font-semibold">Date</th>
+                    <th class="pb-2 pr-4 font-semibold">Description</th>
+                    <th class="pb-2 pr-4 font-semibold">Category</th>
+                    <th class="pb-2 pr-4 text-right font-semibold">Amount</th>
+                    <th class="pb-2 pr-4 font-semibold">Paid by</th>
+                    <th class="pb-2 font-semibold">Split</th>
+                  </tr>
+                </thead>
+                <tbody id="expenses-body" class="divide-y divide-slate-100"></tbody>
+              </table>
+            </div>
+
+            <div class="mt-4 flex items-center justify-between">
+              <button
+                id="prev-page"
+                class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-600 transition hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Previous
+              </button>
+              <p id="page-info" class="text-sm font-semibold text-slate-600">Page 1 of 1</p>
+              <button
+                id="next-page"
+                class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-600 transition hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Next
+              </button>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      Chart.defaults.color = "#475569";
+      Chart.defaults.font.family = "Manrope, sans-serif";
+      Chart.defaults.animation.duration = 900;
+      Chart.defaults.plugins.legend.labels.usePointStyle = true;
+
+      const PAGE_SIZE = 20;
+      const amountFormatter = new Intl.NumberFormat("de-DE", {
+        style: "currency",
+        currency: "EUR",
+      });
+
+      const palette = [
+        "#6366f1",
+        "#8b5cf6",
+        "#0ea5e9",
+        "#14b8a6",
+        "#22c55e",
+        "#eab308",
+        "#f97316",
+        "#ef4444",
+      ];
+
+      const refs = {
+        groupSelect: document.getElementById("group-select"),
+        loading: document.getElementById("loading"),
+        error: document.getElementById("error"),
+        empty: document.getElementById("empty"),
+        dashboard: document.getElementById("dashboard"),
+        totalSpend: document.getElementById("total-spend"),
+        expenseCount: document.getElementById("expense-count"),
+        memberCount: document.getElementById("member-count"),
+        largestExpenseAmount: document.getElementById("largest-expense-amount"),
+        largestExpenseLabel: document.getElementById("largest-expense-label"),
+        settlementsBody: document.getElementById("settlements-body"),
+        expensesBody: document.getElementById("expenses-body"),
+        sortDate: document.getElementById("sort-date"),
+        prevPage: document.getElementById("prev-page"),
+        nextPage: document.getElementById("next-page"),
+        pageInfo: document.getElementById("page-info"),
+      };
+
+      const state = {
+        selectedGroupId: "",
+        expenses: [],
+        sortDirection: "desc",
+        currentPage: 1,
+        charts: {
+          byDay: null,
+          byCategory: null,
+          byPerson: null,
+        },
+      };
+
+      function formatMoney(cents) {
+        return amountFormatter.format((Number(cents) || 0) / 100);
+      }
+
+      function asDateKey(value) {
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) {
+          return "";
+        }
+
+        return parsed.toISOString().slice(0, 10);
+      }
+
+      function showError(message) {
+        refs.error.textContent = message;
+        refs.error.classList.remove("hidden");
+      }
+
+      function clearError() {
+        refs.error.classList.add("hidden");
+        refs.error.textContent = "";
+      }
+
+      function setLoading(loading) {
+        refs.loading.classList.toggle("hidden", !loading);
+      }
+
+      async function fetchJson(url) {
+        const response = await fetch(url);
+        if (!response.ok) {
+          let details = "";
+          try {
+            const payload = await response.json();
+            details = payload?.message || payload?.error || "";
+          } catch (_error) {
+            details = "";
+          }
+
+          throw new Error(details || `Request failed (${response.status})`);
+        }
+
+        return response.json();
+      }
+
+      function destroyCharts() {
+        for (const key of Object.keys(state.charts)) {
+          state.charts[key]?.destroy();
+          state.charts[key] = null;
+        }
+      }
+
+      function renderCharts(stats) {
+        destroyCharts();
+
+        const dayLabels = stats.byDay.map((item) => item.date);
+        const dayValues = stats.byDay.map((item) => item.total / 100);
+        const byCategoryLabels = stats.byCategory.map((item) => item.category);
+        const byCategoryValues = stats.byCategory.map((item) => item.total / 100);
+        const byPersonLabels = stats.byMember.map((item) => item.name);
+        const byPersonValues = stats.byMember.map((item) => item.paid / 100);
+
+        state.charts.byDay = new Chart(document.getElementById("spending-day-chart"), {
+          type: "bar",
+          data: {
+            labels: dayLabels.length ? dayLabels : ["No data"],
+            datasets: [
+              {
+                label: "Spend (€)",
+                data: dayValues.length ? dayValues : [0],
+                backgroundColor: "rgba(99, 102, 241, 0.85)",
+                borderRadius: 8,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              y: {
+                beginAtZero: true,
+              },
+            },
+            plugins: {
+              tooltip: {
+                callbacks: {
+                  label(context) {
+                    return amountFormatter.format(context.raw);
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        state.charts.byCategory = new Chart(document.getElementById("category-chart"), {
+          type: "doughnut",
+          data: {
+            labels: byCategoryLabels.length ? byCategoryLabels : ["No data"],
+            datasets: [
+              {
+                data: byCategoryValues.length ? byCategoryValues : [1],
+                backgroundColor: palette,
+                borderWidth: 1,
+                borderColor: "#ffffff",
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                position: "bottom",
+              },
+              tooltip: {
+                callbacks: {
+                  label(context) {
+                    return `${context.label}: ${amountFormatter.format(context.raw)}`;
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        state.charts.byPerson = new Chart(document.getElementById("person-chart"), {
+          type: "bar",
+          data: {
+            labels: byPersonLabels.length ? byPersonLabels : ["No data"],
+            datasets: [
+              {
+                label: "Paid (€)",
+                data: byPersonValues.length ? byPersonValues : [0],
+                backgroundColor: byPersonValues.map(
+                  (_value, index) => palette[index % palette.length]
+                ),
+                borderRadius: 8,
+              },
+            ],
+          },
+          options: {
+            indexAxis: "y",
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              x: {
+                beginAtZero: true,
+              },
+            },
+            plugins: {
+              tooltip: {
+                callbacks: {
+                  label(context) {
+                    return amountFormatter.format(context.raw);
+                  },
+                },
+              },
+            },
+          },
+        });
+      }
+
+      function renderSettlements(settlements) {
+        if (!settlements.length) {
+          refs.settlementsBody.innerHTML = `
+            <tr>
+              <td colspan="3" class="py-4 text-center text-sm text-slate-500">All settled up.</td>
+            </tr>
+          `;
+          return;
+        }
+
+        refs.settlementsBody.innerHTML = settlements
+          .map((settlement) => {
+            return `
+              <tr>
+                <td class="py-3 pr-3">
+                  <div class="inline-flex items-center gap-2">
+                    <span class="font-semibold text-slate-700">${settlement.fromName}</span>
+                    <span class="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700">owing</span>
+                  </div>
+                </td>
+                <td class="py-3 pr-3">
+                  <div class="inline-flex items-center gap-2">
+                    <span class="font-semibold text-slate-700">${settlement.toName}</span>
+                    <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">owed</span>
+                  </div>
+                </td>
+                <td class="py-3 text-right font-semibold text-slate-900">${formatMoney(settlement.amount)}</td>
+              </tr>
+            `;
+          })
+          .join("");
+      }
+
+      function sortedExpenses() {
+        return [...state.expenses].sort((left, right) => {
+          const leftDate = new Date(left.createdAt).getTime();
+          const rightDate = new Date(right.createdAt).getTime();
+          return state.sortDirection === "desc" ? rightDate - leftDate : leftDate - rightDate;
+        });
+      }
+
+      function renderExpenseTable() {
+        const ordered = sortedExpenses();
+        const totalPages = Math.max(1, Math.ceil(ordered.length / PAGE_SIZE));
+        if (state.currentPage > totalPages) {
+          state.currentPage = totalPages;
+        }
+
+        const startIndex = (state.currentPage - 1) * PAGE_SIZE;
+        const pageItems = ordered.slice(startIndex, startIndex + PAGE_SIZE);
+
+        if (!pageItems.length) {
+          refs.expensesBody.innerHTML = `
+            <tr>
+              <td colspan="6" class="py-4 text-center text-sm text-slate-500">No expenses found.</td>
+            </tr>
+          `;
+        } else {
+          refs.expensesBody.innerHTML = pageItems
+            .map((expense) => {
+              const splitText = expense.participants.length
+                ? expense.participants.map((participant) => participant.name).join(", ")
+                : "N/A";
+              return `
+                <tr>
+                  <td class="py-3 pr-4 text-slate-600">${asDateKey(expense.createdAt)}</td>
+                  <td class="py-3 pr-4 font-semibold text-slate-800">${expense.description}</td>
+                  <td class="py-3 pr-4">
+                    <span class="rounded-full bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700">${expense.category}</span>
+                  </td>
+                  <td class="py-3 pr-4 text-right font-semibold text-slate-900">${formatMoney(expense.amount)}</td>
+                  <td class="py-3 pr-4 text-slate-700">${expense.paidBy.name}</td>
+                  <td class="py-3 text-slate-600">${splitText}</td>
+                </tr>
+              `;
+            })
+            .join("");
+        }
+
+        refs.pageInfo.textContent = `Page ${state.currentPage} of ${totalPages}`;
+        refs.prevPage.disabled = state.currentPage <= 1;
+        refs.nextPage.disabled = state.currentPage >= totalPages;
+        refs.sortDate.textContent = state.sortDirection === "desc" ? "Date ↓" : "Date ↑";
+      }
+
+      function renderStats(stats, group, expenses) {
+        refs.totalSpend.textContent = formatMoney(stats.totalSpend);
+        refs.expenseCount.textContent = String(stats.expenseCount);
+        refs.memberCount.textContent = String(group.members.length);
+
+        const largestExpense = expenses.reduce((largest, current) => {
+          if (!largest || current.amount > largest.amount) {
+            return current;
+          }
+          return largest;
+        }, null);
+
+        refs.largestExpenseAmount.textContent = largestExpense
+          ? formatMoney(largestExpense.amount)
+          : formatMoney(0);
+        refs.largestExpenseLabel.textContent = largestExpense?.description || "N/A";
+      }
+
+      function populateGroupSelector(groups) {
+        refs.groupSelect.innerHTML = groups
+          .map((group) => {
+            return `<option value="${group.id}">${group.name} (${group.memberCount})</option>`;
+          })
+          .join("");
+      }
+
+      async function loadGroup(groupId) {
+        clearError();
+        refs.dashboard.classList.add("hidden");
+        setLoading(true);
+
+        try {
+          const encodedGroupId = encodeURIComponent(groupId);
+          const [group, stats, expenses, settlements] = await Promise.all([
+            fetchJson(`/api/groups/${encodedGroupId}`),
+            fetchJson(`/api/groups/${encodedGroupId}/stats`),
+            fetchJson(`/api/groups/${encodedGroupId}/expenses`),
+            fetchJson(`/api/groups/${encodedGroupId}/settlements`),
+          ]);
+
+          state.expenses = expenses;
+          state.currentPage = 1;
+
+          renderStats(stats, group, expenses);
+          renderCharts(stats);
+          renderSettlements(settlements);
+          renderExpenseTable();
+
+          refs.dashboard.classList.remove("hidden");
+        } catch (error) {
+          destroyCharts();
+          state.expenses = [];
+          renderExpenseTable();
+          showError(error instanceof Error ? error.message : "Failed to load group data.");
+        } finally {
+          setLoading(false);
+        }
+      }
+
+      async function init() {
+        setLoading(true);
+        clearError();
+        refs.empty.classList.add("hidden");
+        refs.dashboard.classList.add("hidden");
+
+        try {
+          const groups = await fetchJson("/api/groups");
+
+          if (!groups.length) {
+            refs.empty.classList.remove("hidden");
+            return;
+          }
+
+          populateGroupSelector(groups);
+          state.selectedGroupId = groups[0].id;
+          refs.groupSelect.value = state.selectedGroupId;
+
+          await loadGroup(state.selectedGroupId);
+        } catch (error) {
+          showError(error instanceof Error ? error.message : "Failed to initialize dashboard.");
+        } finally {
+          setLoading(false);
+        }
+      }
+
+      refs.groupSelect.addEventListener("change", async (event) => {
+        const value = event.target.value;
+        if (!value) {
+          return;
+        }
+
+        state.selectedGroupId = value;
+        await loadGroup(state.selectedGroupId);
+      });
+
+      refs.sortDate.addEventListener("click", () => {
+        state.sortDirection = state.sortDirection === "desc" ? "asc" : "desc";
+        state.currentPage = 1;
+        renderExpenseTable();
+      });
+
+      refs.prevPage.addEventListener("click", () => {
+        if (state.currentPage <= 1) {
+          return;
+        }
+
+        state.currentPage -= 1;
+        renderExpenseTable();
+      });
+
+      refs.nextPage.addEventListener("click", () => {
+        state.currentPage += 1;
+        renderExpenseTable();
+      });
+
+      init();
+    </script>
+  </body>
+</html>

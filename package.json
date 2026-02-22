@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/bot/index.ts",
+    "dashboard": "tsx src/api/server.ts",
     "build": "tsc",
     "test": "vitest",
     "test:engine": "vitest run tests/engine",
