@@ -434,6 +434,46 @@ router.get("/groups/:id/stats", async (req, res, next) => {
   }
 });
 
+router.get("/groups/:id/expenses/export.csv", async (req, res, next) => {
+  try {
+    const group = await requireGroup(req.params.id, res);
+    if (!group) return;
+
+    const expenses = await expenseService.getGroupExpenses(group.id);
+    const allUserIds = new Set<string>();
+    for (const e of expenses) {
+      allUserIds.add(e.paidBy);
+      for (const p of e.participants) allUserIds.add(p);
+    }
+    const users = await loadUsers(Array.from(allUserIds));
+    const enriched = enrichExpenses(expenses, users);
+
+    const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
+
+    const header = ["Date", "Description", "Category", "Amount (EUR)", "Paid By", "Split With", "Split Method"];
+    const rows = enriched
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .map((e) => [
+        e.createdAt.slice(0, 10),
+        escape(e.description),
+        escape(e.category),
+        (e.amount / 100).toFixed(2),
+        escape(e.paidBy.name),
+        escape(e.participants.map((p) => p.name).join(", ")),
+        e.splitMethod,
+      ]);
+
+    const csv = [header, ...rows].map((r) => r.join(",")).join("\n");
+    const filename = `${group.name.replace(/[^a-z0-9]/gi, "_")}_expenses.csv`;
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(csv);
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.use((_req, res) => {
   res.status(404).json({
     error: "Not Found",

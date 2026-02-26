@@ -173,12 +173,22 @@
           <section class="card fade-in p-5">
             <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h2 class="font-display text-lg font-bold text-slate-900">Expenses</h2>
-              <button
-                id="sort-date"
-                class="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600 transition hover:border-slate-400 hover:text-slate-800"
-              >
-                Date ↓
-              </button>
+              <div class="flex items-center gap-2">
+                <button
+                  id="sort-date"
+                  class="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600 transition hover:border-slate-400 hover:text-slate-800"
+                >
+                  Date ↓
+                </button>
+                <a
+                  id="export-csv"
+                  href="#"
+                  download
+                  class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-indigo-600 transition hover:bg-indigo-100 hover:text-indigo-800"
+                >
+                  📥 Export CSV
+                </a>
+              </div>
             </div>
 
             <div class="overflow-x-auto">
@@ -560,6 +570,9 @@
 
           state.expenses = expenses;
           state.currentPage = 1;
+
+          const exportLink = document.getElementById("export-csv");
+          if (exportLink) exportLink.href = `/api/groups/${encodeURIComponent(groupId)}/expenses/export.csv`;
 
           renderStats(stats, group, expenses);
           renderCharts(stats);
