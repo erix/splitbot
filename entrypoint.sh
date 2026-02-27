@@ -6,6 +6,7 @@ npx drizzle-kit push --yes 2>/dev/null || npx drizzle-kit push
 
 BACKUP_PID=""
 BOT_PID=""
+API_PID=""
 
 is_positive_integer() {
   case "$1" in
@@ -53,7 +54,13 @@ start_backup_loop() {
   BACKUP_PID=$!
 }
 
-stop_backup_loop() {
+stop_all() {
+  if [ -n "$BOT_PID" ]; then
+    kill "$BOT_PID" 2>/dev/null || true
+  fi
+  if [ -n "$API_PID" ]; then
+    kill "$API_PID" 2>/dev/null || true
+  fi
   if [ -n "$BACKUP_PID" ]; then
     kill "$BACKUP_PID" 2>/dev/null || true
     wait "$BACKUP_PID" 2>/dev/null || true
@@ -62,18 +69,17 @@ stop_backup_loop() {
 
 on_term() {
   echo "🛑 Received shutdown signal."
-
-  if [ -n "$BOT_PID" ]; then
-    kill "$BOT_PID" 2>/dev/null || true
-  fi
-
-  stop_backup_loop
+  stop_all
   exit 0
 }
 
 trap on_term INT TERM
 
 start_backup_loop
+
+echo "🌐 Starting dashboard API..."
+node dist/api/server.js &
+API_PID=$!
 
 echo "🤖 Starting splitbot..."
 node dist/bot/index.js &
@@ -84,5 +90,5 @@ wait "$BOT_PID"
 BOT_STATUS=$?
 set -e
 
-stop_backup_loop
+stop_all
 exit "$BOT_STATUS"
