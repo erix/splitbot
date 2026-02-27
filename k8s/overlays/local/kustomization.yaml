@@ -7,4 +7,4 @@ resources:
   - tunnel-sealed.yaml
 images:
   - name: ghcr.io/erix/splitbot
-    newTag: latest # {"$imagepolicy":"flux-system:splitbot:tag"}
+    newTag: main-12-sha-3dc2b8b74f5adc35337543f6b646bda130999dad # {"$imagepolicy":"flux-system:splitbot:tag"}
