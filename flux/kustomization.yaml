@@ -6,3 +6,4 @@ resources:
   - splitbot-imagerepository.yaml
   - splitbot-imagepolicy.yaml
   - splitbot-imageupdateautomation.yaml
+  - tunnel-kustomization.yaml

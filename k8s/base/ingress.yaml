@@ -1,0 +1,17 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: splitbot
+  namespace: splitbot
+spec:
+  rules:
+    - host: splitbot.erix-homelab.site
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: splitbot
+                port:
+                  number: 3000
