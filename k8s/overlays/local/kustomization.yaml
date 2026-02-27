@@ -4,6 +4,7 @@ namespace: splitbot
 resources:
   - ../../base
   - splitbot-sealed.yaml
+  - tunnel-sealed.yaml
 images:
   - name: ghcr.io/erix/splitbot
     newTag: latest # {"$imagepolicy":"flux-system:splitbot:tag"}

@@ -1,0 +1,14 @@
+apiVersion: bitnami.com/v1alpha1
+kind: SealedSecret
+metadata:
+  creationTimestamp: null
+  name: splitbot-tunnel-secret
+  namespace: splitbot
+spec:
+  encryptedData:
+    TUNNEL_TOKEN: AgCLT+1Tv66fVQjhX+oy6cnrTAyqmIDYl/R+gSWRh5lzOUJ17qK+dGi+M7bZGaHPmHG1pba4jnqa/hK9RPQGgLm92Bpi9wCw5cS7MxSVrL/m2uBnyfJUIRJQr4AyYSNIVRXiGJPChU83udHpBJRLNxCKdfOotHVeaDBMnKT3zJ3a8uN53dPq0dMxTUDL1v14+YBK3LpSZCpwFrP59Aw6OY2Sr05pqCys1US5JvUNXHtAWqfDbKr/5fjCUpRSEpTCAd0/7mdZrU30UtIlniUpchIxwY5wWMlP/nmNatit3OyU/SkgdPxZ1hi9ci9Py32tPw3+uPzN6S6SMl3o+PuFYeApvTniP9vKLHmedMu0hziMWo7E4Ed07W9NgAyopQcehlCjQzwW8rt589QPfBE7w/7DyciiMYYlCRcCUM00uswoOeT5xHKXBqctM8A6Rnb/qb795qVmea+Rw2eGsQtpASZRbHm45gYq4nJdShFnuwit35cqiZ457RTAluKhO1yILF7sjYCPizKQS7kkHg9pwj6SamXWhV+GHquhbqiZNsoeS/8rnb8zarI2BJTULK0Xpv4GP0avmFUiKuNxXB7UQT4TuV8yNm7hh0GhIn7IEOmDoImnhzoc9qYcIfLY6bgHUxhTbCUjmUtc9eapdqdd22y9wbmzVL0QjcpNojD7jQOHe8Ut+9obvFrjgpX+MoxAmr45t8OBbRlmcnHUuVe3UvPxolwwMXXl2xbz6VJowGbb1WWnMXSn4X7vcqo32oz/inKnaibFieAv2x+AZmNBOMrcdWJHmD+qpj8hLnAK27MPM9vUsWLcqPm3D0XfZHp2SwoGN9fVp2yqp9tMq061+lEJfs+lLxEYxaqHie37EYgcJpD6dBpyVrc2ktEsEKjC4ITE5Pl5K37WAnibDGV3JQ2TI+/z4nx4jQhegO/zLSyYEeS09jrg
+  template:
+    metadata:
+      creationTimestamp: null
+      name: splitbot-tunnel-secret
+      namespace: splitbot
